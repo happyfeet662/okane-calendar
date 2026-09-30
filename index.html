@@ -74,6 +74,7 @@ header .gear { width: 40px; height: 40px; font-size: 20px; color: var(--sub); }
 .summary .rows button, .summary .rows div { text-align: left; background: var(--bg); border-radius: 10px; padding: 8px 10px; }
 .summary .rows .k { font-size: 11px; color: var(--sub); display: block; }
 .summary .rows .v { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; display: block; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.summary .rows .wide { grid-column: 1 / -1; }
 .summary .rows .edit .k::after { content: " ✎"; }
 .summary .hint { font-size: 13px; color: var(--sub); margin-top: 10px; line-height: 1.6; }
 .summary .hint b { color: var(--text); font-variant-numeric: tabular-nums; }
@@ -177,7 +178,7 @@ const prevYm = (ym) => { const [y, m] = ym.split('-').map(Number); const d = new
 const short = (n) => n >= 100000 ? (n / 10000).toFixed(0) + '万' : n >= 10000 ? (Math.round(n / 1000) / 10) + '万' : n.toLocaleString('ja-JP');
 
 // ---------- data ----------
-function blank() { return { version: 1, settings: { defaultBudget: 0, defaultSalary: 0 }, budgets: {}, salaries: {}, entries: [], recurring: [] }; }
+function blank() { return { version: 1, settings: { defaultBudget: 0, defaultSalary: 0 }, budgets: {}, salaries: {}, carries: {}, entries: [], recurring: [] }; }
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
@@ -216,6 +217,29 @@ function itemsOf(y, m) {
   return out;
 }
 
+// 月の合計。繰越ありの場合は前月の残りを足す（前月→さらに前月…と、繰越をオンにした月までさかのぼる）
+function monthTotals(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const items = itemsOf(y, m - 1);
+  const t = {
+    items,
+    start: moneyOf('budget', ym),
+    salary: moneyOf('salary', ym),
+    inc: items.filter((i) => i.type === 'income').reduce((s, i) => s + i.amount, 0),
+    exp: items.filter((i) => i.type === 'expense').reduce((s, i) => s + i.amount, 0),
+    carry: carryOf(ym),
+  };
+  t.rest = t.carry + t.start + t.salary + t.inc - t.exp;
+  return t;
+}
+function autoCarry(ym) { return monthTotals(prevYm(ym)).rest; }
+function carryOf(ym) {
+  if (!db.settings.carry) return 0;
+  if (db.carries && ym in db.carries) return db.carries[ym];
+  if (!db.settings.carryFrom || ym <= db.settings.carryFrom) return 0;
+  return autoCarry(ym);
+}
+
 // ---------- view state ----------
 const now = new Date();
 let vy = now.getFullYear(), vm = now.getMonth();
@@ -224,15 +248,11 @@ let sel = dateStr(now);
 function render() {
   const todayStr = dateStr(new Date());
   const ym = ymOf(vy, vm);
-  const items = itemsOf(vy, vm);
+  const tot = monthTotals(ym);
+  const { items, start, salary, inc, exp, carry, rest } = tot;
   $('title').textContent = `${vy}年${vm + 1}月`;
 
   // summary
-  const start = moneyOf('budget', ym);
-  const salary = moneyOf('salary', ym);
-  const inc = items.filter((i) => i.type === 'income').reduce((s, i) => s + i.amount, 0);
-  const exp = items.filter((i) => i.type === 'expense').reduce((s, i) => s + i.amount, 0);
-  const rest = start + salary + inc - exp;
   const isCur = todayStr.startsWith(ym);
   let hint = '';
   if (isCur) {
@@ -244,6 +264,7 @@ function render() {
     <div class="label">今月 自由に使える残り</div>
     <div class="big ${rest < 0 ? 'neg' : ''}">${rest < 0 ? '−' : ''}${yen(Math.abs(rest))}</div>
     <div class="rows">
+      ${db.settings.carry ? `<button class="edit wide" id="carryBtn"><span class="k">先月からの繰越${db.carries && ym in db.carries ? '（手入力）' : ''}</span><span class="v" style="color:${carry < 0 ? 'var(--expense)' : 'var(--income)'}">${carry < 0 ? '−' : '+'}${yen(Math.abs(carry))}</span></button>` : ''}
       <button class="edit" id="budgetBtn"><span class="k">月初の手持ち</span><span class="v">${yen(start)}</span></button>
       <button class="edit" id="salaryBtn"><span class="k">前月末の給料</span><span class="v" style="color:var(--income)">+${yen(salary)}</span></button>
       <div><span class="k">今月の収入</span><span class="v" style="color:var(--income)">+${yen(inc)}</span></div>
@@ -251,6 +272,7 @@ function render() {
     </div>${hint}`;
   $('budgetBtn').onclick = () => openMoney('budget');
   $('salaryBtn').onclick = () => openMoney('salary');
+  if ($('carryBtn')) $('carryBtn').onclick = openCarry;
 
   // calendar
   const first = new Date(vy, vm, 1).getDay();
@@ -435,11 +457,44 @@ function openMoney(kind) {
   };
 }
 
+function openCarry() {
+  const ym = ymOf(vy, vm);
+  if (!db.carries) db.carries = {};
+  const auto = ym <= db.settings.carryFrom ? 0 : autoCarry(ym);
+  const manual = ym in db.carries;
+  const cur = manual ? db.carries[ym] : auto;
+  const pm = Number(prevYm(ym).slice(5));
+  openSheet(`
+    <h3>${pm}月からの繰越</h3>
+    <div class="note">自動計算：${pm}月の残り <b>${auto < 0 ? '−' : ''}${yen(Math.abs(auto))}</b><br>実際に残った金額が違うときは、ここで直せます（マイナスは先頭に「-」）。</div>
+    <div class="field"><label>繰越額（円）</label><input id="cAmount" class="amount" inputmode="text" placeholder="0" value="${cur < 0 ? '-' : ''}${Math.abs(cur).toLocaleString('ja-JP')}"></div>
+    <div class="btns">
+      <button class="btn primary" id="cSave">この金額にする</button>
+      ${manual ? '<button class="btn" id="cAuto">自動計算に戻す</button>' : ''}
+      <button class="btn" id="cCancel">キャンセル</button>
+    </div>`);
+  const inp = $('cAmount');
+  inp.addEventListener('input', () => {
+    const neg = inp.value.trim().startsWith('-') || inp.value.trim().startsWith('−');
+    const n = parseAmount(inp.value);
+    inp.value = (neg ? '-' : '') + (n ? n.toLocaleString('ja-JP') : '');
+  });
+  $('cCancel').onclick = closeSheet;
+  $('cSave').onclick = () => {
+    const neg = /^\s*[-−]/.test(inp.value);
+    db.carries[ym] = (neg ? -1 : 1) * parseAmount(inp.value);
+    save(); closeSheet(); render();
+  };
+  if ($('cAuto')) $('cAuto').onclick = () => { delete db.carries[ym]; save(); closeSheet(); render(); };
+}
+
 function openSettings() {
   openSheet(`
     <h3>設定</h3>
     <div class="field"><label>毎月の基本の手持ち額（円）</label><input id="sDef" class="amount" inputmode="numeric" placeholder="0" value="${db.settings.defaultBudget ? db.settings.defaultBudget.toLocaleString('ja-JP') : ''}"></div>
     <div class="field"><label>毎月の給料（前月末に入る分・円）</label><input id="sSal" class="amount" inputmode="numeric" placeholder="0" value="${db.settings.defaultSalary ? db.settings.defaultSalary.toLocaleString('ja-JP') : ''}"></div>
+    <label class="check"><input type="checkbox" id="sCarry" ${db.settings.carry ? 'checked' : ''}> 先月の残りを繰り越す</label>
+    <div class="note">オンにすると、前の月の「自由に使える残り」が次の月に足されます（使いすぎた月はマイナスで引かれます）。繰越を使う場合、「月初の手持ち」は0円にしておくと二重に数えずにすみます。</div>
     <div class="btns"><button class="btn primary" id="sSave">保存</button></div>
     <div class="sec">バックアップ</div>
     <div class="note">データはこのiPhoneの中だけに保存されています。機種変更に備えて、ときどき書き出しておくと安心です。</div>
@@ -455,7 +510,11 @@ function openSettings() {
   bindAmount($('sDef'));
   bindAmount($('sSal'));
   $('sClose').onclick = closeSheet;
-  $('sSave').onclick = () => { db.settings.defaultBudget = parseAmount($('sDef').value); db.settings.defaultSalary = parseAmount($('sSal').value); save(); closeSheet(); render(); };
+  $('sSave').onclick = () => { db.settings.defaultBudget = parseAmount($('sDef').value); db.settings.defaultSalary = parseAmount($('sSal').value);
+    const on = $('sCarry').checked;
+    if (on && !db.settings.carry) db.settings.carryFrom = ymOf(new Date().getFullYear(), new Date().getMonth());
+    db.settings.carry = on;
+    save(); closeSheet(); render(); };
   $('sExport').onclick = exportData;
   $('sImport').onclick = () => $('importFile').click();
   $('sReset').onclick = () => {
