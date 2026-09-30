@@ -70,7 +70,7 @@ header .gear { width: 40px; height: 40px; font-size: 20px; color: var(--sub); }
 .summary .label { font-size: 13px; color: var(--sub); }
 .summary .big { font-size: 34px; font-weight: 800; margin: 2px 0 10px; font-variant-numeric: tabular-nums; }
 .summary .big.neg { color: var(--expense); }
-.summary .rows { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.summary .rows { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .summary .rows button, .summary .rows div { text-align: left; background: var(--bg); border-radius: 10px; padding: 8px 10px; }
 .summary .rows .k { font-size: 11px; color: var(--sub); display: block; }
 .summary .rows .v { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; display: block; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -177,7 +177,7 @@ const prevYm = (ym) => { const [y, m] = ym.split('-').map(Number); const d = new
 const short = (n) => n >= 100000 ? (n / 10000).toFixed(0) + '万' : n >= 10000 ? (Math.round(n / 1000) / 10) + '万' : n.toLocaleString('ja-JP');
 
 // ---------- data ----------
-function blank() { return { version: 1, settings: { defaultBudget: 0 }, budgets: {}, entries: [], recurring: [] }; }
+function blank() { return { version: 1, settings: { defaultBudget: 0, defaultSalary: 0 }, budgets: {}, salaries: {}, entries: [], recurring: [] }; }
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
@@ -192,7 +192,15 @@ function save() {
 }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
-function budgetOf(ym) { return ym in db.budgets ? db.budgets[ym] : (db.settings.defaultBudget || 0); }
+// 月ごとの金額（月初の手持ち / 前月末の給料）。個別設定がなければ毎月の基本額
+const MONEY = {
+  budget: { map: 'budgets', def: 'defaultBudget', label: '月初の手持ち', note: '月のはじめに手元にあるお金（口座残高や予算など）。給料は「前月末の給料」に入れてください。' },
+  salary: { map: 'salaries', def: 'defaultSalary', label: '前月末の給料', note: '前の月の月末ごろに入って、この月に使う給料の金額（手取り）。' },
+};
+function moneyOf(kind, ym) {
+  const k = MONEY[kind], map = db[k.map] || {};
+  return ym in map ? map[ym] : (db.settings[k.def] || 0);
+}
 
 function itemsOf(y, m) {
   const ym = ymOf(y, m);
@@ -220,10 +228,11 @@ function render() {
   $('title').textContent = `${vy}年${vm + 1}月`;
 
   // summary
-  const start = budgetOf(ym);
+  const start = moneyOf('budget', ym);
+  const salary = moneyOf('salary', ym);
   const inc = items.filter((i) => i.type === 'income').reduce((s, i) => s + i.amount, 0);
   const exp = items.filter((i) => i.type === 'expense').reduce((s, i) => s + i.amount, 0);
-  const rest = start + inc - exp;
+  const rest = start + salary + inc - exp;
   const isCur = todayStr.startsWith(ym);
   let hint = '';
   if (isCur) {
@@ -236,10 +245,12 @@ function render() {
     <div class="big ${rest < 0 ? 'neg' : ''}">${rest < 0 ? '−' : ''}${yen(Math.abs(rest))}</div>
     <div class="rows">
       <button class="edit" id="budgetBtn"><span class="k">月初の手持ち</span><span class="v">${yen(start)}</span></button>
-      <div><span class="k">収入</span><span class="v" style="color:var(--income)">+${yen(inc)}</span></div>
+      <button class="edit" id="salaryBtn"><span class="k">前月末の給料</span><span class="v" style="color:var(--income)">+${yen(salary)}</span></button>
+      <div><span class="k">今月の収入</span><span class="v" style="color:var(--income)">+${yen(inc)}</span></div>
       <div><span class="k">予定の支出</span><span class="v" style="color:var(--expense)">−${yen(exp)}</span></div>
     </div>${hint}`;
-  $('budgetBtn').onclick = openBudget;
+  $('budgetBtn').onclick = () => openMoney('budget');
+  $('salaryBtn').onclick = () => openMoney('salary');
 
   // calendar
   const first = new Date(vy, vm, 1).getDay();
@@ -401,13 +412,15 @@ function openEntry(item, date) {
   };
 }
 
-function openBudget() {
-  const ym = ymOf(vy, vm);
+function openMoney(kind) {
+  const ym = ymOf(vy, vm), k = MONEY[kind];
+  if (!db[k.map]) db[k.map] = {};
+  const cur = moneyOf(kind, ym);
   openSheet(`
-    <h3>${vm + 1}月の月初の手持ち</h3>
-    <div class="note">月のはじめに使えるお金（口座残高や予算など）。給料日がある月は、給料をカレンダーに「収入」として入れてもOKです。</div>
-    <div class="field"><label>金額（円）</label><input id="bAmount" class="amount" inputmode="numeric" placeholder="0" value="${budgetOf(ym) ? budgetOf(ym).toLocaleString('ja-JP') : ''}"></div>
-    <label class="check"><input type="checkbox" id="bDef" ${ym in db.budgets ? '' : 'checked'}> 毎月の基本額にする（個別に設定していない月に使う）</label>
+    <h3>${vm + 1}月の${k.label}</h3>
+    <div class="note">${k.note}</div>
+    <div class="field"><label>金額（円）</label><input id="bAmount" class="amount" inputmode="numeric" placeholder="0" value="${cur ? cur.toLocaleString('ja-JP') : ''}"></div>
+    <label class="check"><input type="checkbox" id="bDef" ${ym in db[k.map] ? '' : 'checked'}> 毎月同じ額にする（個別に設定していない月に使う）</label>
     <div class="btns">
       <button class="btn primary" id="bSave">保存</button>
       <button class="btn" id="bCancel">キャンセル</button>
@@ -416,8 +429,8 @@ function openBudget() {
   $('bCancel').onclick = closeSheet;
   $('bSave').onclick = () => {
     const v = parseAmount($('bAmount').value);
-    if ($('bDef').checked) { db.settings.defaultBudget = v; delete db.budgets[ym]; }
-    else db.budgets[ym] = v;
+    if ($('bDef').checked) { db.settings[k.def] = v; delete db[k.map][ym]; }
+    else db[k.map][ym] = v;
     save(); closeSheet(); render();
   };
 }
@@ -426,6 +439,7 @@ function openSettings() {
   openSheet(`
     <h3>設定</h3>
     <div class="field"><label>毎月の基本の手持ち額（円）</label><input id="sDef" class="amount" inputmode="numeric" placeholder="0" value="${db.settings.defaultBudget ? db.settings.defaultBudget.toLocaleString('ja-JP') : ''}"></div>
+    <div class="field"><label>毎月の給料（前月末に入る分・円）</label><input id="sSal" class="amount" inputmode="numeric" placeholder="0" value="${db.settings.defaultSalary ? db.settings.defaultSalary.toLocaleString('ja-JP') : ''}"></div>
     <div class="btns"><button class="btn primary" id="sSave">保存</button></div>
     <div class="sec">バックアップ</div>
     <div class="note">データはこのiPhoneの中だけに保存されています。機種変更に備えて、ときどき書き出しておくと安心です。</div>
@@ -439,8 +453,9 @@ function openSettings() {
       <button class="btn" id="sClose">閉じる</button>
     </div>`);
   bindAmount($('sDef'));
+  bindAmount($('sSal'));
   $('sClose').onclick = closeSheet;
-  $('sSave').onclick = () => { db.settings.defaultBudget = parseAmount($('sDef').value); save(); closeSheet(); render(); };
+  $('sSave').onclick = () => { db.settings.defaultBudget = parseAmount($('sDef').value); db.settings.defaultSalary = parseAmount($('sSal').value); save(); closeSheet(); render(); };
   $('sExport').onclick = exportData;
   $('sImport').onclick = () => $('importFile').click();
   $('sReset').onclick = () => {
