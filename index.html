@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="お金カレンダー">
+<meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<title>お金カレンダー</title>
+<style>
+:root {
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --text: #1c1d21;
+  --sub: #6b6f78;
+  --line: #e4e6ea;
+  --accent: #2f6fde;
+  --expense: #d64545;
+  --income: #1f9d5c;
+  --today: #2f6fde;
+  --sel: #e8effc;
+  --sun: #d64545;
+  --sat: #2f6fde;
+  --overlay: rgba(0,0,0,.35);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111214;
+    --card: #1c1d21;
+    --text: #f1f2f4;
+    --sub: #9a9ea8;
+    --line: #2d2f35;
+    --accent: #6d9cf0;
+    --expense: #f07070;
+    --income: #4cc98a;
+    --today: #6d9cf0;
+    --sel: #243148;
+    --sun: #f07070;
+    --sat: #6d9cf0;
+    --overlay: rgba(0,0,0,.6);
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+  font-size: 15px;
+  padding: env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 24px);
+  -webkit-user-select: none; user-select: none;
+  overscroll-behavior-y: none;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.wrap { max-width: 560px; margin: 0 auto; padding: 0 12px; }
+
+header { display: flex; align-items: center; justify-content: space-between; padding: 10px 4px 8px; }
+header .nav { width: 40px; height: 40px; font-size: 22px; color: var(--accent); border-radius: 20px; }
+header .nav:active { background: var(--sel); }
+header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: .02em; }
+header .tools { display: flex; gap: 2px; align-items: center; }
+header .gear { width: 40px; height: 40px; font-size: 20px; color: var(--sub); }
+
+.card { background: var(--card); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+
+.summary .label { font-size: 13px; color: var(--sub); }
+.summary .big { font-size: 34px; font-weight: 800; margin: 2px 0 10px; font-variant-numeric: tabular-nums; }
+.summary .big.neg { color: var(--expense); }
+.summary .rows { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.summary .rows button, .summary .rows div { text-align: left; background: var(--bg); border-radius: 10px; padding: 8px 10px; }
+.summary .rows .k { font-size: 11px; color: var(--sub); display: block; }
+.summary .rows .v { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; display: block; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.summary .rows .edit .k::after { content: " ✎"; }
+.summary .hint { font-size: 13px; color: var(--sub); margin-top: 10px; line-height: 1.6; }
+.summary .hint b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.cal { padding: 8px 6px 6px; }
+.cal .dow, .cal .grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.cal .dow div { text-align: center; font-size: 11px; color: var(--sub); padding: 2px 0 6px; }
+.cal .dow div:first-child { color: var(--sun); }
+.cal .dow div:last-child { color: var(--sat); }
+.cell { min-height: 58px; border-radius: 8px; padding: 4px 2px 3px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.cell.blank { pointer-events: none; }
+.cell .d { font-size: 13px; width: 24px; height: 24px; line-height: 24px; text-align: center; border-radius: 12px; font-variant-numeric: tabular-nums; }
+.cell.sun .d { color: var(--sun); }
+.cell.sat .d { color: var(--sat); }
+.cell.today .d { background: var(--today); color: #fff; font-weight: 700; }
+.cell.sel { background: var(--sel); }
+.cell .a { font-size: 10px; line-height: 1.25; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cell .a.ex { color: var(--expense); }
+.cell .a.in { color: var(--income); }
+
+.day h2, .list h2 { font-size: 15px; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: center; }
+.day h2 .add { background: var(--accent); color: #fff; font-size: 14px; font-weight: 700; padding: 7px 14px; border-radius: 18px; }
+.empty { color: var(--sub); font-size: 13px; padding: 6px 0 2px; }
+.item { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-top: 1px solid var(--line); width: 100%; text-align: left; }
+.item:first-of-type { border-top: 0; }
+.item .t { flex: 1; min-width: 0; }
+.item .t .n { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item .t .s { display: block; font-size: 11px; color: var(--sub); margin-top: 2px; }
+.item .m { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.item .m.ex { color: var(--expense); }
+.item .m.in { color: var(--income); }
+.item.past { opacity: .5; }
+.tag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 6px; background: var(--bg); color: var(--sub); margin-left: 4px; vertical-align: 1px; }
+
+/* sheet */
+.overlay { position: fixed; inset: 0; background: var(--overlay); display: none; align-items: flex-end; justify-content: center; z-index: 10; }
+.overlay.open { display: flex; }
+.sheet { background: var(--card); width: 100%; max-width: 560px; border-radius: 18px 18px 0 0; padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); max-height: 92vh; overflow-y: auto; animation: up .2s ease-out; -webkit-user-select: text; user-select: text; }
+@keyframes up { from { transform: translateY(40px); opacity: .6; } to { transform: none; opacity: 1; } }
+.sheet h3 { margin: 0 0 14px; font-size: 17px; text-align: center; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--bg); border-radius: 10px; padding: 3px; margin-bottom: 12px; }
+.seg button { padding: 9px; border-radius: 8px; font-weight: 700; color: var(--sub); }
+.seg button.on.ex { background: var(--card); color: var(--expense); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.seg button.on.in { background: var(--card); color: var(--income); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: 12px; color: var(--sub); margin-bottom: 4px; }
+.field input[type=text], .field input[type=date], .field input[type=number], .field input:not([type]) {
+  width: 100%; font-size: 17px; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); -webkit-appearance: none; appearance: none;
+}
+.field input.amount { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.check { display: flex; align-items: center; gap: 10px; padding: 6px 0 12px; font-size: 15px; }
+.check input { width: 22px; height: 22px; accent-color: var(--accent); }
+.note { font-size: 12px; color: var(--sub); line-height: 1.6; margin: -4px 0 12px; }
+.btns { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.btn { padding: 13px; border-radius: 12px; font-weight: 700; font-size: 16px; text-align: center; background: var(--bg); }
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.danger { color: var(--expense); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 12px; }
+.chips button { font-size: 13px; padding: 6px 10px; border-radius: 14px; background: var(--bg); color: var(--sub); }
+.sec { font-size: 12px; color: var(--sub); margin: 18px 0 8px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <button class="nav" id="prev" aria-label="前の月">‹</button>
+    <h1 id="title"></h1>
+    <div class="tools">
+      <button class="nav" id="next" aria-label="次の月">›</button>
+      <button class="gear" id="gear" aria-label="設定">⚙︎</button>
+    </div>
+  </header>
+
+  <section class="card summary" id="summary"></section>
+
+  <section class="card cal">
+    <div class="dow"><div>日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div></div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section class="card day" id="day"></section>
+
+  <section class="card list" id="list"></section>
+</div>
+
+<div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+
+<script>
+'use strict';
+const KEY = 'okane-calendar-v1';
+const $ = (id) => document.getElementById(id);
+const pad = (n) => String(n).padStart(2, '0');
+const yen = (n) => '¥' + Math.round(n).toLocaleString('ja-JP');
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const ymOf = (y, m) => `${y}-${pad(m + 1)}`;
+const dateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const daysIn = (y, m) => new Date(y, m + 1, 0).getDate();
+const prevYm = (ym) => { const [y, m] = ym.split('-').map(Number); const d = new Date(y, m - 2, 1); return ymOf(d.getFullYear(), d.getMonth()); };
+const short = (n) => n >= 100000 ? (n / 10000).toFixed(0) + '万' : n >= 10000 ? (Math.round(n / 1000) / 10) + '万' : n.toLocaleString('ja-JP');
+
+// ---------- data ----------
+function blank() { return { version: 1, settings: { defaultBudget: 0 }, budgets: {}, entries: [], recurring: [] }; }
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return blank();
+    return Object.assign(blank(), JSON.parse(raw));
+  } catch (e) { return blank(); }
+}
+let db = load();
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(db)); }
+  catch (e) { alert('保存できませんでした。ストレージの空き容量を確認してください。'); }
+}
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+function budgetOf(ym) { return ym in db.budgets ? db.budgets[ym] : (db.settings.defaultBudget || 0); }
+
+function itemsOf(y, m) {
+  const ym = ymOf(y, m);
+  const out = db.entries.filter((e) => e.date.startsWith(ym + '-')).map((e) => ({ ...e, recurring: false }));
+  const last = daysIn(y, m);
+  for (const r of db.recurring) {
+    if (r.start > ym) continue;
+    if (r.end && r.end < ym) continue;
+    if ((r.skips || []).includes(ym)) continue;
+    out.push({ ...r, recurring: true, date: `${ym}-${pad(Math.min(r.day, last))}` });
+  }
+  out.sort((a, b) => a.date.localeCompare(b.date) || (a.type === b.type ? 0 : a.type === 'income' ? -1 : 1));
+  return out;
+}
+
+// ---------- view state ----------
+const now = new Date();
+let vy = now.getFullYear(), vm = now.getMonth();
+let sel = dateStr(now);
+
+function render() {
+  const todayStr = dateStr(new Date());
+  const ym = ymOf(vy, vm);
+  const items = itemsOf(vy, vm);
+  $('title').textContent = `${vy}年${vm + 1}月`;
+
+  // summary
+  const start = budgetOf(ym);
+  const inc = items.filter((i) => i.type === 'income').reduce((s, i) => s + i.amount, 0);
+  const exp = items.filter((i) => i.type === 'expense').reduce((s, i) => s + i.amount, 0);
+  const rest = start + inc - exp;
+  const isCur = todayStr.startsWith(ym);
+  let hint = '';
+  if (isCur) {
+    const left = daysIn(vy, vm) - new Date().getDate() + 1;
+    const upcoming = items.filter((i) => i.type === 'expense' && i.date >= todayStr).reduce((s, i) => s + i.amount, 0);
+    hint = `<div class="hint">月末まであと <b>${left}日</b>（今日を含む）→ 1日あたり <b>${yen(Math.max(0, rest) / left)}</b><br>今日以降の支払い予定 <b>${yen(upcoming)}</b></div>`;
+  }
+  $('summary').innerHTML = `
+    <div class="label">今月 自由に使える残り</div>
+    <div class="big ${rest < 0 ? 'neg' : ''}">${rest < 0 ? '−' : ''}${yen(Math.abs(rest))}</div>
+    <div class="rows">
+      <button class="edit" id="budgetBtn"><span class="k">月初の手持ち</span><span class="v">${yen(start)}</span></button>
+      <div><span class="k">収入</span><span class="v" style="color:var(--income)">+${yen(inc)}</span></div>
+      <div><span class="k">予定の支出</span><span class="v" style="color:var(--expense)">−${yen(exp)}</span></div>
+    </div>${hint}`;
+  $('budgetBtn').onclick = openBudget;
+
+  // calendar
+  const first = new Date(vy, vm, 1).getDay();
+  const n = daysIn(vy, vm);
+  const byDay = {};
+  for (const i of items) {
+    const d = byDay[i.date] || (byDay[i.date] = { ex: 0, in: 0 });
+    d[i.type === 'expense' ? 'ex' : 'in'] += i.amount;
+  }
+  let html = '';
+  for (let i = 0; i < first; i++) html += '<div class="cell blank"></div>';
+  for (let d = 1; d <= n; d++) {
+    const ds = `${ym}-${pad(d)}`;
+    const w = (first + d - 1) % 7;
+    const t = byDay[ds];
+    const cls = ['cell', w === 0 ? 'sun' : '', w === 6 ? 'sat' : '', ds === todayStr ? 'today' : '', ds === sel ? 'sel' : ''].join(' ');
+    html += `<button class="${cls}" data-d="${ds}"><span class="d">${d}</span>` +
+      (t && t.in ? `<span class="a in">+${short(t.in)}</span>` : '') +
+      (t && t.ex ? `<span class="a ex">−${short(t.ex)}</span>` : '') + '</button>';
+  }
+  $('grid').innerHTML = html;
+
+  // selected day
+  const selInMonth = sel.startsWith(ym + '-');
+  const [sy, sm, sd] = sel.split('-').map(Number);
+  const wd = '日月火水木金土'[new Date(sy, sm - 1, sd).getDay()];
+  const dayItems = items.filter((i) => i.date === sel);
+  $('day').innerHTML = `<h2><span>${selInMonth ? `${sm}月${sd}日（${wd}）` : '日付を選択'}</span><button class="add" id="addBtn">＋ 追加</button></h2>` +
+    (dayItems.length ? dayItems.map((i) => itemRow(i, false, todayStr)).join('') : '<div class="empty">この日の予定はありません</div>');
+  $('addBtn').onclick = () => openEntry(null, selInMonth ? sel : `${ym}-01`);
+
+  // month list
+  $('list').innerHTML = `<h2><span>${vm + 1}月の一覧</span><span style="font-size:12px;color:var(--sub);font-weight:400">${items.length}件</span></h2>` +
+    (items.length ? items.map((i) => itemRow(i, true, todayStr)).join('') : '<div class="empty">カレンダーの日付をタップして、決まっている支出を入れましょう</div>');
+}
+
+function itemRow(i, showDate, todayStr) {
+  const d = Number(i.date.slice(8));
+  const sub = [showDate ? `${d}日` : '', i.recurring ? '毎月' : ''].filter(Boolean).join('・');
+  return `<button class="item ${showDate && i.date < todayStr ? 'past' : ''}" data-id="${i.id}" data-r="${i.recurring ? 1 : 0}" data-date="${i.date}">
+    <span class="t"><span class="n">${esc(i.title || (i.type === 'income' ? '収入' : '支出'))}${i.recurring ? '<span class="tag">毎月</span>' : ''}</span>${showDate ? `<span class="s">${d}日</span>` : ''}</span>
+    <span class="m ${i.type === 'income' ? 'in' : 'ex'}">${i.type === 'income' ? '+' : '−'}${yen(i.amount)}</span></button>`;
+}
+
+// ---------- events ----------
+$('prev').onclick = () => { const d = new Date(vy, vm - 1, 1); vy = d.getFullYear(); vm = d.getMonth(); render(); };
+$('next').onclick = () => { const d = new Date(vy, vm + 1, 1); vy = d.getFullYear(); vm = d.getMonth(); render(); };
+$('title').onclick = () => { const t = new Date(); vy = t.getFullYear(); vm = t.getMonth(); sel = dateStr(t); render(); };
+$('gear').onclick = openSettings;
+$('grid').onclick = (e) => {
+  const c = e.target.closest('.cell'); if (!c) return;
+  if (sel === c.dataset.d) { openEntry(null, sel); return; }
+  sel = c.dataset.d; render();
+};
+document.addEventListener('click', (e) => {
+  const it = e.target.closest('.item'); if (!it) return;
+  const src = it.dataset.r === '1' ? db.recurring : db.entries;
+  const found = src.find((x) => x.id === it.dataset.id);
+  if (found) openEntry({ ...found, recurring: it.dataset.r === '1' }, it.dataset.date);
+});
+
+// swipe months
+let tx = null, ty = null;
+document.querySelector('.cal').addEventListener('touchstart', (e) => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, { passive: true });
+document.querySelector('.cal').addEventListener('touchend', (e) => {
+  if (tx === null) return;
+  const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
+  tx = null;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) (dx < 0 ? $('next') : $('prev')).click();
+});
+
+// ---------- sheet ----------
+function openSheet(html) { $('sheet').innerHTML = html; $('overlay').classList.add('open'); }
+function closeSheet() { $('overlay').classList.remove('open'); $('sheet').innerHTML = ''; }
+$('overlay').addEventListener('click', (e) => { if (e.target === $('overlay')) closeSheet(); });
+
+function parseAmount(v) { const n = Number(String(v).replace(/[^\d]/g, '')); return isFinite(n) ? n : 0; }
+function bindAmount(input) {
+  input.addEventListener('input', () => {
+    const n = parseAmount(input.value);
+    input.value = n ? n.toLocaleString('ja-JP') : '';
+  });
+}
+
+function openEntry(item, date) {
+  const isNew = !item;
+  const it = item || { type: 'expense', amount: 0, title: '', recurring: false };
+  const ym = date.slice(0, 7);
+  openSheet(`
+    <h3>${isNew ? '予定を追加' : '予定を編集'}</h3>
+    <div class="seg" id="seg">
+      <button data-t="expense" class="ex ${it.type === 'expense' ? 'on' : ''}">支出</button>
+      <button data-t="income" class="in ${it.type === 'income' ? 'on' : ''}">収入</button>
+    </div>
+    <div class="field"><label>金額（円）</label><input id="fAmount" class="amount" inputmode="numeric" placeholder="0" value="${it.amount ? it.amount.toLocaleString('ja-JP') : ''}"></div>
+    <div class="field"><label>内容</label><input id="fTitle" type="text" placeholder="例：家賃、スマホ代、給料" value="${esc(it.title || '')}"></div>
+    <div class="chips" id="chips">${['家賃', '光熱費', 'スマホ代', 'サブスク', 'カード引き落とし', '保険', '給料'].map((c) => `<button>${c}</button>`).join('')}</div>
+    <div class="field"><label>日付</label><input id="fDate" type="date" value="${date}"></div>
+    <label class="check"><input type="checkbox" id="fRec" ${it.recurring ? 'checked' : ''}> 毎月くり返す（同じ日付）</label>
+    ${!isNew && it.recurring ? '<div class="note">毎月の予定を編集すると、すべての月に反映されます。</div>' : ''}
+    <div class="btns">
+      <button class="btn primary" id="fSave">保存</button>
+      ${isNew ? '' : it.recurring
+        ? `<button class="btn danger" id="fDelOne">${Number(ym.slice(5))}月だけ削除</button><button class="btn danger" id="fDelAfter">${Number(ym.slice(5))}月以降をすべて削除</button>`
+        : '<button class="btn danger" id="fDel">削除</button>'}
+      <button class="btn" id="fCancel">キャンセル</button>
+    </div>`);
+  let type = it.type;
+  $('seg').onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    type = b.dataset.t;
+    $('seg').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+  };
+  $('chips').onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    $('fTitle').value = b.textContent;
+    if (b.textContent === '給料') $('seg').querySelector('[data-t=income]').click();
+  };
+  bindAmount($('fAmount'));
+  if (isNew) setTimeout(() => $('fAmount').focus(), 250);
+  $('fCancel').onclick = closeSheet;
+  $('fSave').onclick = () => {
+    const amount = parseAmount($('fAmount').value);
+    const d = $('fDate').value;
+    if (!amount) { alert('金額を入力してください'); return; }
+    if (!d) { alert('日付を入力してください'); return; }
+    const title = $('fTitle').value.trim();
+    const rec = $('fRec').checked;
+    // remove old
+    if (!isNew) {
+      if (it.recurring) db.recurring = db.recurring.filter((r) => r.id !== it.id);
+      else db.entries = db.entries.filter((x) => x.id !== it.id);
+    }
+    if (rec) {
+      const keep = !isNew && it.recurring ? { start: it.start, end: it.end, skips: it.skips || [] } : { start: d.slice(0, 7), end: null, skips: [] };
+      if (d.slice(0, 7) < keep.start) keep.start = d.slice(0, 7);
+      db.recurring.push({ id: !isNew && it.recurring ? it.id : uid(), type, amount, title, day: Number(d.slice(8)), ...keep });
+    } else {
+      db.entries.push({ id: uid(), type, amount, title, date: d });
+    }
+    save(); sel = d;
+    const [y, m] = d.split('-').map(Number); vy = y; vm = m - 1;
+    closeSheet(); render();
+  };
+  if ($('fDel')) $('fDel').onclick = () => {
+    if (!confirm('この予定を削除しますか？')) return;
+    db.entries = db.entries.filter((x) => x.id !== it.id); save(); closeSheet(); render();
+  };
+  if ($('fDelOne')) $('fDelOne').onclick = () => {
+    const r = db.recurring.find((x) => x.id === it.id);
+    r.skips = [...(r.skips || []), ym]; save(); closeSheet(); render();
+  };
+  if ($('fDelAfter')) $('fDelAfter').onclick = () => {
+    if (!confirm(`${Number(ym.slice(5))}月以降の「${it.title || '予定'}」をすべて削除しますか？`)) return;
+    const r = db.recurring.find((x) => x.id === it.id);
+    if (r.start >= ym) db.recurring = db.recurring.filter((x) => x.id !== it.id);
+    else r.end = prevYm(ym);
+    save(); closeSheet(); render();
+  };
+}
+
+function openBudget() {
+  const ym = ymOf(vy, vm);
+  openSheet(`
+    <h3>${vm + 1}月の月初の手持ち</h3>
+    <div class="note">月のはじめに使えるお金（口座残高や予算など）。給料日がある月は、給料をカレンダーに「収入」として入れてもOKです。</div>
+    <div class="field"><label>金額（円）</label><input id="bAmount" class="amount" inputmode="numeric" placeholder="0" value="${budgetOf(ym) ? budgetOf(ym).toLocaleString('ja-JP') : ''}"></div>
+    <label class="check"><input type="checkbox" id="bDef" ${ym in db.budgets ? '' : 'checked'}> 毎月の基本額にする（個別に設定していない月に使う）</label>
+    <div class="btns">
+      <button class="btn primary" id="bSave">保存</button>
+      <button class="btn" id="bCancel">キャンセル</button>
+    </div>`);
+  bindAmount($('bAmount'));
+  $('bCancel').onclick = closeSheet;
+  $('bSave').onclick = () => {
+    const v = parseAmount($('bAmount').value);
+    if ($('bDef').checked) { db.settings.defaultBudget = v; delete db.budgets[ym]; }
+    else db.budgets[ym] = v;
+    save(); closeSheet(); render();
+  };
+}
+
+function openSettings() {
+  openSheet(`
+    <h3>設定</h3>
+    <div class="field"><label>毎月の基本の手持ち額（円）</label><input id="sDef" class="amount" inputmode="numeric" placeholder="0" value="${db.settings.defaultBudget ? db.settings.defaultBudget.toLocaleString('ja-JP') : ''}"></div>
+    <div class="btns"><button class="btn primary" id="sSave">保存</button></div>
+    <div class="sec">バックアップ</div>
+    <div class="note">データはこのiPhoneの中だけに保存されています。機種変更に備えて、ときどき書き出しておくと安心です。</div>
+    <div class="btns">
+      <button class="btn" id="sExport">データを書き出す</button>
+      <button class="btn" id="sImport">データを読み込む</button>
+    </div>
+    <div class="sec">その他</div>
+    <div class="btns">
+      <button class="btn danger" id="sReset">すべてのデータを削除</button>
+      <button class="btn" id="sClose">閉じる</button>
+    </div>`);
+  bindAmount($('sDef'));
+  $('sClose').onclick = closeSheet;
+  $('sSave').onclick = () => { db.settings.defaultBudget = parseAmount($('sDef').value); save(); closeSheet(); render(); };
+  $('sExport').onclick = exportData;
+  $('sImport').onclick = () => $('importFile').click();
+  $('sReset').onclick = () => {
+    if (!confirm('すべての予定と設定を削除します。元に戻せません。よろしいですか？')) return;
+    db = blank(); save(); closeSheet(); render();
+  };
+}
+
+async function exportData() {
+  const json = JSON.stringify(db, null, 1);
+  const name = `okane-calendar-${dateStr(new Date())}.json`;
+  const file = new File([json], name, { type: 'application/json' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'お金カレンダーのバックアップ' });
+      return;
+    }
+  } catch (e) { if (e.name === 'AbortError') return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+$('importFile').onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    if (!data || !Array.isArray(data.entries) || !Array.isArray(data.recurring)) throw new Error('bad');
+    if (!confirm('今のデータを、読み込んだデータで置き換えます。よろしいですか？')) return;
+    db = Object.assign(blank(), data); save(); closeSheet(); render();
+    alert('読み込みました');
+  } catch (err) { alert('このファイルは読み込めませんでした'); }
+};
+
+// refresh "today" when returning to the app
+document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+
+render();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
